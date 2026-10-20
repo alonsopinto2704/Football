@@ -1,0 +1,1239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Touchline · Premier League Manager</title>
+<meta name="description" content="Clubs, squads, fixtures and results for all 20 Premier League teams — explored on a live 3D pitch.">
+<meta name="theme-color" content="#0a7d3e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='15' cy='15' r='14' fill='%230a7d3e'/%3E%3Cpath d='M15 8l6 4.4-2.3 7.1h-7.4L9 12.4z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js" } }
+</script>
+<style>
+:root {
+  --bg: #f6f8f5;
+  --ink: #0c2416;
+  --muted: #5a6b60;
+  --line: #e1e8e2;
+  --green: #0a7d3e;
+  --green-dark: #075f2f;
+  --mint: #e8f5ec;
+  --head: "Barlow Condensed", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scrollbar-gutter: stable; }
+body { background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--body); overflow-x: hidden; }
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 48px); }
+
+/* nav */
+.logo { display: inline-flex; align-items: center; gap: 10px; font: 700 26px/1 var(--head); letter-spacing: .02em; text-transform: uppercase; }
+.logo svg { width: 30px; height: 30px; }
+.topbar { position: sticky; top: 0; z-index: 20; background: rgba(255,255,255,.9); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.topbar .wrap { display: flex; align-items: center; gap: 24px; height: 72px; }
+.status { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-size: 13px; color: var(--muted); }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.8s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+/* buttons */
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 22px; border: 0; border-radius: 99px; font: 600 15px/1 var(--body); cursor: pointer; transition: background .2s, box-shadow .2s, transform .2s; }
+.btn:active { transform: scale(.97); }
+.btn-green { background: var(--green); color: #fff; }
+.btn-green:hover { background: var(--green-dark); }
+.btn-line { background: #fff; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+.btn-line:hover { box-shadow: inset 0 0 0 1.5px var(--ink); }
+
+/* hero: full-bleed 3D pitch with the copy over its left side */
+.hero { position: relative; min-height: calc(100svh - 72px); display: flex; align-items: center; overflow: hidden; }
+.stage { position: absolute; inset: 0; }
+#pitch { width: 100%; height: 100%; display: block; opacity: 0; transition: opacity .9s; touch-action: pan-y; cursor: grab; }
+#pitch.ready { opacity: 1; }
+#pitch.dragging { cursor: grabbing; }
+.loading { position: absolute; left: 64%; top: 50%; translate: -50% -50%; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); pointer-events: none; transition: opacity .5s; }
+.loading::before { content: ""; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--green); animation: spin .8s linear infinite; }
+#pitch.ready ~ .loading { opacity: 0; }
+@keyframes spin { to { rotate: 360deg; } }
+.stage::after { /* keeps the copy readable where it overlaps the pitch */
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(90deg, var(--bg) 0%, rgba(246,248,245,.85) 30%, rgba(246,248,245,0) 52%);
+}
+.hero-inner { position: relative; z-index: 3; width: 100%; padding-block: 40px 88px; pointer-events: none; }
+.copy { max-width: 540px; pointer-events: auto; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px 7px 10px; border-radius: 99px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); color: var(--muted); font-size: 13px; }
+.eyebrow b { color: var(--ink); font-weight: 600; }
+.eyebrow .live { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: ping 1.8s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(10,125,62,.5); } 70%, 100% { box-shadow: 0 0 0 7px rgba(10,125,62,0); } }
+#countdown { color: var(--green); font-weight: 600; font-variant-numeric: tabular-nums; }
+h1 { font: 700 clamp(60px, 7.4vw, 108px)/.88 var(--head); text-transform: uppercase; letter-spacing: -.01em; margin: 22px 0 22px; }
+h1 span { position: relative; display: inline-block; color: var(--green); isolation: isolate; }
+h1 .chalk { position: absolute; z-index: -1; left: -3%; bottom: -.06em; width: 108%; height: .26em; overflow: visible; }
+h1 .chalk path { fill: none; stroke: #bfe6cb; stroke-width: 10; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: chalk 1s .9s cubic-bezier(.6,0,.2,1) forwards; }
+@keyframes chalk { to { stroke-dashoffset: 0; } }
+.lede { font-size: 18px; color: var(--muted); max-width: 460px; }
+.ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
+.facts { display: flex; gap: 40px; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); max-width: 460px; }
+.facts b { display: block; font: 700 40px/1 var(--head); }
+.facts span { font-size: 13px; color: var(--muted); }
+.hint { display: flex; align-items: center; gap: 10px; margin-top: 22px; font-size: 13px; color: var(--muted); }
+.hint::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--mint); }
+.legal { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.hero-inner, .stage::after { transition: opacity .45s; }
+.hero.zoomed .hero-inner, .hero.zoomed .stage::after { opacity: 0; }
+.hero.zoomed .copy { pointer-events: none; }
+
+/* pitch markers: positioned every frame from the 3D scene */
+.spots { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.spot { position: absolute; left: 0; top: 0; pointer-events: auto; display: inline-flex; align-items: center; gap: 8px; padding: 7px 15px 7px 7px; border: 0; border-radius: 99px; background: #fff; color: var(--ink); font: 600 14px/1 var(--body); white-space: nowrap; cursor: pointer; box-shadow: 0 10px 24px -10px rgba(12,36,22,.5); transition: background .2s, color .2s; }
+.spot::after { content: ""; position: absolute; left: 50%; top: 100%; width: 2px; height: 14px; margin-left: -1px; background: #fff; }
+.spot .ic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--mint); transition: background .2s; }
+.spot .ic svg { width: 14px; height: 14px; fill: none; stroke: var(--green); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; transition: stroke .2s; }
+.spot:hover, .spot:focus-visible, .spot.peek { z-index: 2; background: var(--green); color: #fff; outline: none; }
+.spot:hover .ic, .spot:focus-visible .ic, .spot.peek .ic { background: rgba(255,255,255,.18); }
+.spot:hover .ic svg, .spot:focus-visible .ic svg, .spot.peek .ic svg { stroke: #fff; }
+.hero.zoomed .spot { pointer-events: none; }
+
+/* preview card above a marker: on hover, or when the ball lands on it */
+.peek-card { position: absolute; left: 50%; bottom: calc(100% + 10px); width: 228px; padding: 14px 16px; border-radius: 16px; background: #fff; color: var(--ink); text-align: left; white-space: normal; font: 400 13px/1.45 var(--body); box-shadow: 0 18px 40px -18px rgba(12,36,22,.5); opacity: 0; translate: -50% 8px; pointer-events: none; transition: opacity .25s, translate .3s cubic-bezier(.2,.8,.2,1); }
+.spot:hover .peek-card, .spot:focus-visible .peek-card, .spot.peek .peek-card { opacity: 1; translate: -50% 0; }
+.spots:hover .spot.peek:not(:hover) .peek-card { opacity: 0; }
+
+/* search palette (Ctrl/⌘ K) */
+.find { display: inline-flex; align-items: center; gap: 10px; padding: 10px 10px 10px 38px; border: 1px solid var(--line); border-radius: 99px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6b60' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 14px center / 16px; color: var(--muted); font: 500 14px/1 var(--body); cursor: pointer; transition: border-color .2s; }
+.find:hover, .find:focus-visible { border-color: var(--green); outline: none; }
+.find kbd { padding: 4px 7px; border-radius: 6px; background: var(--bg); font: 600 11px/1 var(--body); }
+.palette { position: fixed; inset: 0; z-index: 60; display: grid; place-items: start center; padding: 12vh 16px 16px; background: rgba(12,36,22,.3); backdrop-filter: blur(4px); animation: fade .2s both; }
+.palette[hidden] { display: none; }
+.palette-box { width: min(560px, 100%); overflow: hidden; border-radius: 20px; background: #fff; box-shadow: 0 40px 80px -30px rgba(12,36,22,.55); animation: pop .25s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes pop { from { opacity: 0; scale: .96; } }
+.palette input { width: 100%; padding: 20px 22px 20px 52px; border: 0; border-bottom: 1px solid var(--line); background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6b60' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 20px center / 20px; font: 400 17px var(--body); color: var(--ink); outline: none; }
+.palette ul { list-style: none; max-height: 50vh; overflow: auto; padding: 8px; }
+.palette li { display: flex; align-items: center; gap: 2px; padding: 9px 12px; border-radius: 12px; cursor: pointer; }
+.palette li[aria-selected="true"] { background: var(--mint); }
+.palette li .crest { width: 30px; height: 30px; font-size: 10px; }
+.palette .ic-s { flex: none; display: grid; place-items: center; width: 30px; height: 30px; margin-right: 10px; border-radius: 50%; background: var(--mint); }
+.palette .ic-s svg { width: 15px; height: 15px; fill: none; stroke: var(--green); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.palette li b { font-weight: 600; }
+.palette li small { margin-left: auto; padding-left: 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.palette .empty-row { padding: 18px 12px; color: var(--muted); cursor: default; }
+.palette-hint { padding: 10px 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.peek-card small { display: block; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.peek-card b { display: block; margin: 3px 0 2px; font: 700 22px/1.05 var(--head); text-transform: uppercase; }
+.peek-card ol { list-style: none; margin-top: 4px; }
+.peek-card li { display: flex; justify-content: space-between; padding: 3px 0; font-weight: 600; border-top: 1px solid var(--line); }
+.peek-card li:first-child { border-top: 0; }
+.peek-card .dots { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.peek-card .dots i { width: 10px; height: 10px; border-radius: 50%; }
+.peek-card .go { display: block; margin-top: 8px; color: var(--green); font-weight: 600; font-size: 12px; }
+
+/* bottom ticker: the coming matchweek */
+.ticker { position: absolute; z-index: 3; left: 0; right: 0; bottom: 0; display: flex; overflow: hidden; background: #fff; border-top: 1px solid var(--line); }
+.ticker > b { flex: none; position: relative; z-index: 1; padding: 14px 18px; background: var(--green); color: #fff; font: 700 15px/1 var(--head); letter-spacing: .08em; text-transform: uppercase; }
+.track { display: flex; width: max-content; animation: marquee 70s linear infinite; }
+.track span { padding: 14px 22px; font: 600 16px/1 var(--head); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.track span em { font-style: normal; color: var(--green); margin-left: 8px; }
+.track span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--line); margin-right: 22px; vertical-align: 3px; }
+@keyframes marquee { to { transform: translateX(-50%); } }
+.ticker:hover .track { animation-play-state: paused; }
+
+/* section pages: open out of the marker you dived into */
+.page { position: fixed; inset: 0; z-index: 40; overflow: auto; background: var(--bg); }
+.page[hidden] { display: none; }
+.page-bar { position: sticky; top: 0; z-index: 2; background: rgba(255,255,255,.92); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.page-bar .wrap { display: flex; align-items: center; gap: 18px; height: 72px; }
+.page-bar .logo { margin-left: auto; font-size: 22px; }
+.back { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 11px 16px; border: 0; border-radius: 99px; background: var(--mint); color: var(--green); font: 600 14px/1 var(--body); cursor: pointer; transition: background .2s, color .2s; }
+.back:hover, .back:focus-visible { background: var(--green); color: #fff; outline: none; }
+.tabs { display: flex; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tab { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 10px 14px; border: 0; border-radius: 99px; background: none; color: var(--muted); font: 600 14px/1 var(--body); cursor: pointer; transition: background .2s, color .2s; }
+.tab svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.tab:hover { background: var(--bg); color: var(--ink); }
+.tab:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.tab[aria-current="page"] { background: var(--ink); color: #fff; }
+.page-hero { position: relative; overflow: hidden; color: #fff; background: repeating-linear-gradient(90deg, #0c7e3f 0 120px, #0a7238 120px 240px); padding-block: 56px 48px; }
+.page-hero .wrap { position: relative; }
+.hero-ic { position: absolute; right: 4%; top: 50%; width: min(300px, 38vw); height: auto; translate: 0 -50%; fill: none; stroke: rgba(255,255,255,.14); stroke-width: 1.1; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; animation: ic-in .8s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes ic-in { from { opacity: 0; scale: .85; rotate: -10deg; } }
+.drawer-go { margin-top: 22px; width: 100%; justify-content: center; }
+.page-hero .kicker { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+.page-hero h2 { font: 700 clamp(64px, 10vw, 140px)/.85 var(--head); text-transform: uppercase; margin: 12px 0 16px; }
+.page-hero p { max-width: 520px; opacity: .9; }
+.page-body { padding-block: 32px 80px; }
+.page-body > * { animation: rise .55s cubic-bezier(.2,.8,.2,1) both; }
+.page-body > :nth-child(2) { animation-delay: .06s; }
+.page-body > :nth-child(3) { animation-delay: .12s; }
+.page-body > :nth-child(n+4) { animation-delay: .18s; }
+@keyframes rise { from { opacity: 0; translate: 0 14px; } }
+.panel { background: #fff; border: 1px solid var(--line); border-radius: 20px; padding: 24px 26px; }
+.panel h3 { font: 700 24px/1 var(--head); text-transform: uppercase; margin-bottom: 16px; }
+.note { margin-top: 16px; font-size: 13px; color: var(--muted); }
+.crest { flex: none; display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: 10px; border-radius: 50%; font: 700 10px/1 var(--body); font-style: normal; letter-spacing: .02em; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); }
+
+/* clubs */
+.search { width: 100%; max-width: 440px; margin-bottom: 18px; padding: 13px 18px 13px 44px; border: 1px solid var(--line); border-radius: 99px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235a6b60' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 16px center / 18px; font: 400 15px var(--body); color: var(--ink); }
+.search:focus { outline: 2px solid var(--green); outline-offset: 2px; }
+.club-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.club { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; display: flex; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; transition: transform .2s, box-shadow .2s; animation: rise .5s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i, 0) * 22ms + .1s); }
+.club:hover, .club:focus-visible { transform: translateY(-3px); box-shadow: 0 16px 32px -20px rgba(12,36,22,.4); border-color: var(--green); outline: none; }
+.drawer-scrim { position: fixed; inset: 0; z-index: 3; background: rgba(12,36,22,.28); animation: fade .3s both; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; z-index: 4; width: min(440px, 100%); overflow: auto; background: #fff; padding: 28px; box-shadow: -30px 0 60px -30px rgba(12,36,22,.45); animation: slide-in .45s cubic-bezier(.2,.8,.2,1) both; }
+.drawer[hidden], .drawer-scrim[hidden] { display: none; }
+@keyframes slide-in { from { translate: 100% 0; } }
+@keyframes fade { from { opacity: 0; } }
+.drawer-close { position: absolute; top: 18px; right: 18px; width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--bg); color: var(--ink); font-size: 22px; line-height: 1; cursor: pointer; }
+.drawer-close:hover, .drawer-close:focus-visible { background: var(--ink); color: #fff; outline: none; }
+.drawer .crest { width: 72px; height: 72px; margin: 0 0 18px; font-size: 18px; }
+.drawer h3 { font: 700 44px/.95 var(--head); text-transform: uppercase; }
+.drawer .where { color: var(--muted); margin: 6px 0 22px; }
+.drawer-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 22px; }
+.drawer-stats div { background: var(--bg); border-radius: 14px; padding: 14px; }
+.drawer-stats b { display: block; font: 700 34px/1 var(--head); }
+.drawer-stats span { font-size: 12px; color: var(--muted); }
+.drawer h4 { margin: 20px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.drawer .line { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; font-weight: 600; }
+.drawer .line small { color: var(--green); font-weight: 700; white-space: nowrap; }
+.club[hidden] { display: none; }
+.who, .team, .club-cell { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: inherit; cursor: pointer; }
+.who:hover, .team:hover, .club-cell:hover { text-decoration: underline; text-decoration-color: var(--green); text-underline-offset: 4px; }
+.who:focus-visible, .team:focus-visible, .club-cell:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; border-radius: 8px; }
+.club .crest { width: 44px; height: 44px; margin-right: 14px; font-size: 12px; }
+.club b { display: block; font: 700 21px/1.1 var(--head); text-transform: uppercase; }
+.club small { color: var(--muted); font-size: 13px; }
+
+/* players: leader bars */
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.bars { list-style: none; display: grid; gap: 14px; }
+.bars li { display: grid; grid-template-columns: minmax(140px, 1fr) 1.4fr 24px; align-items: center; gap: 14px; }
+.bars .who { display: flex; align-items: center; font-weight: 600; font-size: 15px; white-space: nowrap; }
+.bars .crest { width: 28px; height: 28px; font-size: 9px; }
+.bar-track { height: 14px; }
+.bar-track i { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--green); transform-origin: left; animation: grow .8s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 60ms + .2s); }
+@keyframes grow { from { scale: 0 1; } }
+.bars .val { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* fixtures */
+.day { font: 700 26px/1 var(--head); text-transform: uppercase; margin: 28px 0 12px; }
+.day:first-child { margin-top: 0; }
+.match { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 6px 16px; padding: 14px 0; border-top: 1px solid var(--line); }
+.match:first-child { border-top: 0; padding-top: 2px; }
+.match .team { display: flex; align-items: center; gap: 12px; font: 700 22px/1 var(--head); text-transform: uppercase; }
+.match .home { justify-content: flex-end; text-align: right; }
+.match .crest { margin: 0; }
+.ko { padding: 8px 12px; border-radius: 10px; background: var(--mint); color: var(--green); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ko.ft { background: var(--ink); color: #fff; }
+.mw-pick { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 20px; font-weight: 600; }
+.mw-pick select { padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font: 600 15px var(--body); color: var(--ink); }
+.loading.failed { left: 50%; max-width: min(460px, 90%); pointer-events: auto; color: #b42318; font-size: 15px; line-height: 1.5; }
+.loading.failed::before { display: none; }
+
+/* manage (CRUD) */
+.m-tables { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.m-tables .tab { background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+.m-tables .tab[aria-current="page"] { background: var(--ink); color: #fff; box-shadow: none; }
+.m-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.m-bar .search { flex: 1 1 240px; margin: 0; }
+.m-status { min-height: 22px; margin: 12px 0; font-size: 14px; color: var(--muted); }
+.m-status.err, .m-err { color: #b42318; }
+.m-err:empty { display: none; }
+.m-grid { font-size: 14px; }
+.m-grid th, .m-grid td { text-align: left !important; white-space: nowrap; padding: 9px 10px; }
+.m-grid td.act { display: flex; gap: 6px; }
+.mini { border: 0; border-radius: 99px; padding: 7px 12px; background: var(--mint); color: var(--green-dark); font: 600 12px/1 var(--body); cursor: pointer; }
+.mini.del { background: #fde8e8; color: #b42318; }
+.mini:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.m-form { display: grid; gap: 14px; margin-top: 4px; }
+.m-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.m-form label span::first-letter { text-transform: uppercase; }
+.m-form input:not([type=checkbox]), .m-form select, .m-form textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font: 400 15px var(--body); color: var(--ink); }
+.m-form input:focus, .m-form select:focus, .m-form textarea:focus { outline: 2px solid var(--green); outline-offset: 1px; }
+.m-form .check { display: flex; align-items: center; gap: 10px; color: var(--ink); }
+.m-form .check input { width: 18px; height: 18px; accent-color: var(--green); }
+.m-form .btn { justify-content: center; margin-top: 6px; }
+.drawer .m-form + .note, .drawer h3.small { font-size: 34px; }
+.match small { grid-column: 1 / -1; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* table */
+.table-wrap { overflow-x: auto; }
+table.full { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+.full th { text-align: center; font-size: 12px; font-weight: 500; color: var(--muted); padding: 8px 6px; }
+.full td { text-align: center; padding: 10px 6px; border-top: 1px solid var(--line); }
+.full th:nth-child(2), .full td:nth-child(2) { text-align: left; }
+.league { min-width: 660px; }
+.league td:first-child { color: var(--muted); box-shadow: inset 3px 0 0 var(--zone, transparent); }
+.league td:nth-child(8) { font-weight: 700; }
+.club-cell { display: inline-flex; align-items: center; font-weight: 600; }
+.club-cell .crest { width: 26px; height: 26px; font-size: 9px; }
+.form { display: inline-flex; gap: 3px; }
+.form i { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 6px; font: 700 10px/1 var(--body); font-style: normal; }
+.form .W { background: var(--green); color: #fff; }
+.form .D { background: var(--line); color: var(--ink); }
+.form .L { background: #d03b3b; color: #fff; }
+.ucl { --zone: var(--green); }
+.uel { --zone: #7cc596; }
+.rel { --zone: #d03b3b; }
+.legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 13px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 7px; border-radius: 3px; background: var(--zone); vertical-align: -1px; }
+
+/* stats */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.hero-num { display: block; font: 700 120px/.9 var(--head); }
+.cols { position: relative; height: 170px; margin-bottom: 26px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; border-bottom: 1px solid #c9d3cc; }
+.col { position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.col i { width: min(24px, 100%); height: calc(var(--h) * 100%); border-radius: 4px 4px 0 0; background: var(--green); transform-origin: bottom; animation: lift .8s cubic-bezier(.2,.8,.2,1) both; animation-delay: calc(var(--i) * 50ms + .2s); transition: background .2s; }
+@keyframes lift { from { scale: 1 0; } }
+.col span { position: absolute; top: calc(100% + 8px); font-size: 11px; color: var(--muted); }
+.col::before { content: attr(data-v); position: absolute; bottom: calc(var(--h) * 100% + 6px); font-size: 12px; font-weight: 700; opacity: 0; transition: opacity .2s; }
+.col:hover::before, .col.top::before { opacity: 1; }
+.col:hover i { background: var(--green-dark); }
+.meter + .meter { margin-top: 16px; }
+.meter-top { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 14px; }
+.meter-top small { color: var(--muted); font-weight: 400; }
+.meter-track { height: 10px; border-radius: 99px; background: var(--mint); overflow: hidden; }
+.meter-track i { display: block; height: 100%; border-radius: 99px; background: var(--green); transform-origin: left; animation: grow .9s cubic-bezier(.2,.8,.2,1) .25s both; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.stat-grid .kpis { grid-column: 1 / -1; }
+.kpis div { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+.kpis b { display: block; font: 700 52px/1 var(--head); color: var(--green); }
+.kpis span { font-size: 14px; color: var(--muted); }
+
+@media (max-width: 1100px) {
+  .hero { display: block; min-height: 0; }
+  .hero-inner { padding-block: 36px 0; }
+  .stage { position: relative; height: clamp(420px, 100vw, 660px); }
+  .stage::after { background: linear-gradient(var(--bg), rgba(246,248,245,0) 12%); }
+  .hero.zoomed .hero-inner { opacity: 1; } /* stacked layout: copy isn't over the pitch */
+  .hero.zoomed .copy { pointer-events: auto; }
+  .ticker { position: static; }
+  .page-bar .logo { display: none; }
+}
+@media (max-width: 640px) {
+  .status { display: none; }
+  .find { margin-left: auto; padding-right: 0; width: 42px; height: 42px; }
+  .find .find-label, .find kbd { display: none; }
+  .topbar .btn { padding: 11px 16px; font-size: 14px; }
+  .facts { gap: 28px; }
+  .peek-card { width: 200px; }
+  .spot { padding: 5px 11px 5px 5px; font-size: 12px; gap: 6px; }
+  .spot .ic { width: 22px; height: 22px; }
+  .tab { padding: 9px 11px; }
+  .back .long { display: none; }
+  .panel { padding: 18px 16px; }
+  .league { min-width: 0; }
+  .league th:nth-child(n+3):nth-child(-n+6), .league td:nth-child(n+3):nth-child(-n+6), .league th:last-child, .league td:last-child { display: none; }
+  .kpis { grid-template-columns: 1fr; }
+  .hero-num { font-size: 96px; }
+  .match .team { font-size: 17px; gap: 8px; }
+  .match .crest { width: 26px; height: 26px; font-size: 9px; }
+}
+@media (max-width: 420px) {
+  .topbar .btn { display: none; } /* the hero has the same button */
+}
+@media (prefers-reduced-motion: reduce) {
+  .track, .status::before, .eyebrow .live, .loading::before, .palette, .palette-box, .drawer, .drawer-scrim { animation: none; }
+  h1 .chalk path { animation: none; stroke-dashoffset: 0; }
+  .page-body > *, .club, .bar-track i, .col i, .meter-track i, .hero-ic { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="logo" href="#"><svg viewBox="0 0 30 30"><circle cx="15" cy="15" r="14" fill="#0a7d3e"/><path d="M15 8l6 4.4-2.3 7.1h-7.4L9 12.4z" fill="#fff"/></svg>Touchline</a>
+    <span class="status">Loading…</span>
+    <button class="find" type="button" aria-label="Search (Ctrl K)"><span class="find-label">Search</span><kbd>Ctrl K</kbd></button>
+    <button class="btn btn-green" type="button" data-spot="stats">Open dashboard</button>
+  </div>
+</header>
+
+<main class="hero">
+  <div class="wrap hero-inner">
+    <div class="copy">
+      <span class="eyebrow" data-reveal><span class="live"></span>Next: <b id="next-match"></b> · <span id="countdown">–</span></span>
+      <h1 data-reveal>The league,<br><span>managed.<svg class="chalk" viewBox="0 0 300 20" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M4 13 C 70 6, 150 5, 296 9"/></svg></span></h1>
+      <p class="lede" data-reveal>Clubs, squads, fixtures and results for all 20 Premier League teams — in one place, built on PostgreSQL.</p>
+      <div class="ctas" data-reveal>
+        <button class="btn btn-green" type="button" data-spot="stats">Open dashboard →</button>
+        <button class="btn btn-line" type="button" data-spot="fixtures">View fixtures</button>
+      </div>
+      <div class="facts" data-reveal>
+        <div><b data-count="20">20</b><span>Clubs</span></div>
+        <div><b data-count="380">380</b><span>Matches</span></div>
+        <div><b data-count="38">38</b><span>Matchweeks</span></div>
+      </div>
+      <div data-reveal>
+        <p class="hint">Click a marker on the pitch to dive in</p>
+        <p class="legal">Student project · live from PostgreSQL · not affiliated with the Premier League</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <canvas id="pitch" aria-hidden="true"></canvas>
+    <div class="loading">Laying the turf…</div>
+    <div class="spots" role="navigation" aria-label="Sections"></div>
+  </div>
+
+  <div class="ticker" aria-hidden="true"><b>MW</b><div class="track"></div></div>
+</main>
+
+<div class="page" role="dialog" aria-modal="true" aria-labelledby="page-title" hidden>
+  <div class="page-bar"><div class="wrap">
+    <button class="back" type="button">← <span class="long">Back to&nbsp;</span>pitch</button>
+    <nav class="tabs" aria-label="Sections"></nav>
+    <span class="logo"><svg viewBox="0 0 30 30"><circle cx="15" cy="15" r="14" fill="#0a7d3e"/><path d="M15 8l6 4.4-2.3 7.1h-7.4L9 12.4z" fill="#fff"/></svg>Touchline</span>
+  </div></div>
+  <div class="page-hero"><svg class="hero-ic" viewBox="0 0 24 24" aria-hidden="true"></svg><div class="wrap"><div class="kicker"></div><h2 id="page-title"></h2><p></p></div></div>
+  <div class="wrap page-body"></div>
+  <div class="drawer-scrim" hidden></div>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden><button class="drawer-close" type="button" aria-label="Close club details">×</button><div class="drawer-body"></div></aside>
+</div>
+
+<div class="palette" role="dialog" aria-modal="true" aria-label="Search" hidden>
+  <div class="palette-box">
+    <input type="text" placeholder="Search sections, clubs or players…" aria-label="Search sections, clubs or players" aria-controls="palette-list" aria-autocomplete="list" role="combobox" aria-expanded="true" autocomplete="off">
+    <ul id="palette-list" role="listbox"></ul>
+    <p class="palette-hint">↑ ↓ to move · Enter to open · Esc to close</p>
+  </div>
+</div>
+
+<!-- entrance motion (Motion); content stays visible if it fails to load -->
+<script type="module">
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    try {
+      const { animate, stagger } = await import('https://cdn.jsdelivr.net/npm/motion@11.11.13/+esm');
+      const ease = [.2, .8, .2, 1];
+      animate('.hero [data-reveal]', { opacity: [0, 1], y: [24, 0] }, { duration: .7, ease, delay: stagger(.07) });
+      document.querySelectorAll('[data-count]').forEach((el, i) =>
+        animate(0, +el.dataset.count, { duration: 1.4, delay: .4 + i * .1, ease, onUpdate: v => el.textContent = Math.round(v) }));
+    } catch {}
+  }
+</script>
+
+<!-- 3D: a real-grass pitch that builds itself, a ball touring the section markers, dive-in section pages -->
+<script type="module">
+import * as THREE from 'three';
+
+const M = THREE.MathUtils, $ = s => document.querySelector(s);
+
+// ---- league data: read from PostgreSQL through server.js (/api/site); the Manage page writes through the same API
+const api = async (path, opts) => {
+  const r = await fetch('/api/' + path, opts && { method: opts.method, headers: { 'content-type': 'application/json' }, body: opts.body && JSON.stringify(opts.body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.detail ? `${j.error}. ${j.detail}` : j.error || `${r.status} ${r.statusText}`);
+  return j;
+};
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const LON = { timeZone: 'Europe/London' };
+const when = d => new Date(d).toLocaleString('en-GB', { ...LON, weekday: 'short', hour: '2-digit', minute: '2-digit' }).replace(',', '');
+const dayName = d => new Date(d).toLocaleDateString('en-GB', { ...LON, weekday: 'long', day: 'numeric', month: 'long' });
+const timeOf = d => new Date(d).toLocaleTimeString('en-GB', { ...LON, hour: '2-digit', minute: '2-digit' });
+// display arrays keep the shapes the pages were built around; strings are escaped once, here
+let SEASON = '', CLUBS = [], INFO = {}, TABLE = [], MATCHES = [], FIXTURES = [], LEADERS = [], SCORERS = [], CLEAN = [];
+let MW_GOALS = [], RESULTS = [], DISCIPLINE = [], NEXT_MW = null, LAST_MW = 0, totalGoals = 0, matches = 0;
+const club = code => CLUBS.find(c => c[1] === code) ?? [code, code, '', '', '#5a6b60']; // [name, code, ground, city, colour]
+function applySite(d) {
+  if (!d.season) throw new Error('there is no season in the database yet. Run db/seed.sql in pgAdmin');
+  SEASON = esc(d.season.name);
+  CLUBS = d.clubs.map(c => [esc(c.short_name), c.code, esc(c.stadium ?? 'No ground set'), esc(c.city ?? ''), c.colour]);
+  INFO = Object.fromEntries(d.clubs.map(c => [c.code, c]));
+  TABLE = d.standings.map(r => [r.code, r.won, r.drawn, r.lost, r.goals_for, r.goals_against, r.form ?? '', r.position, r.points]);
+  MATCHES = d.matches;
+  const upcoming = MATCHES.filter(m => m.status === 'scheduled' || m.status === 'live');
+  NEXT_MW = upcoming[0]?.matchweek ?? null;
+  FIXTURES = upcoming.filter(m => m.matchweek === NEXT_MW).map(m => [m.home, m.away, when(m.kickoff_at), m.kickoff_at]);
+  LAST_MW = Math.max(0, ...MATCHES.filter(m => m.status === 'finished').map(m => m.matchweek ?? 0));
+  LEADERS = d.leaders;
+  const top = k => LEADERS.filter(l => l[k] > 0).sort((a, b) => b[k] - a[k] || a.player.localeCompare(b.player)).slice(0, 8).map(l => [esc(l.player), l.code, l[k]]);
+  SCORERS = top('goals'); CLEAN = top('clean_sheets');
+  MW_GOALS = d.perMw.map(r => [r.matchweek, r.goals]);
+  const s = d.summary ?? {};
+  totalGoals = s.goals ?? 0; matches = s.played ?? 0;
+  RESULTS = [['Home wins', s.home_wins ?? 0], ['Draws', s.draws ?? 0], ['Away wins', s.away_wins ?? 0]];
+  DISCIPLINE = [['Clean sheets', s.clean_sheets ?? 0], ['Yellow cards', s.yellow_cards ?? 0], ['Red cards', s.red_cards ?? 0]];
+}
+try { applySite(await api('site')); } catch (e) {
+  const l = $('.loading'); l.classList.add('failed');
+  l.textContent = location.protocol === 'file:'
+    ? 'Open the site through the server: run "npm start" in this folder, then go to http://localhost:3000'
+    : `Can't load league data: ${e.message}.`;
+  throw e;
+}
+// topbar, hero line and ticker
+const cd = $('#countdown'), pad = n => String(n).padStart(2, '0');
+function paintChrome() {
+  $('.status').innerHTML = NEXT_MW ? `Matchweek ${NEXT_MW} · ${SEASON}` : `${SEASON} · no fixtures scheduled`;
+  $('.ticker > b').textContent = NEXT_MW ? `MW ${NEXT_MW}` : 'Table';
+  const f = FIXTURES[0];
+  $('#next-match').innerHTML = f ? `${club(f[0])[0]} v ${club(f[1])[0]}` : 'nothing scheduled';
+  const items = FIXTURES.length
+    ? FIXTURES.map(f => `<span>${club(f[0])[0]} v ${club(f[1])[0]}<em>${f[2]}</em></span>`)
+    : TABLE.slice(0, 10).map(r => `<span>${r[7]}. ${club(r[0])[0]}<em>${r[8]} pts</em></span>`);
+  $('.track').innerHTML = [...items, ...items].join('');
+}
+function tick() {
+  const f = FIXTURES[0];
+  if (!f) return cd.textContent = '–';
+  let s = (new Date(f[3]) - Date.now()) / 1000 | 0;
+  if (s <= 0) return cd.textContent = 'awaiting result';
+  const d = s / 86400 | 0; s %= 86400;
+  cd.textContent = `${d}d ${pad(s / 3600 | 0)}:${pad(s % 3600 / 60 | 0)}:${pad(s % 60)}`;
+}
+paintChrome(); tick(); setInterval(tick, 1000);
+const canvas = $('#pitch'), hero = $('.hero'), page = $('.page'), spotsEl = $('.spots');
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+const backOut = k => 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2);
+const cubicOut = k => 1 - Math.pow(1 - k, 3);
+const PW = 68, PL = 105;                   // pitch metres, length along x
+const SL = PL + 12, SW = PW + 12, SH = 4;  // slab with a run-off margin
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+const aniso = renderer.capabilities.getMaxAnisotropy();
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(32, 1, 1, 800);
+const pitch = new THREE.Group(); // everything that rises in on load
+scene.add(pitch);
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#dfe8df', 1.5));
+const sun = new THREE.DirectionalLight('#fff6e8', 2.6);
+sun.position.set(-60, 120, 70);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -95, right: 95, top: 95, bottom: -95, near: 1, far: 320 });
+sun.shadow.bias = -.0005; sun.shadow.normalBias = .05;
+scene.add(sun);
+
+const canvasTex = (w, h, draw) => {
+  const cv = Object.assign(document.createElement('canvas'), { width: w, height: h });
+  draw(cv.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = aniso;
+  return t;
+};
+
+// ---- loading: fade the canvas in once the grass has arrived, then build the pitch
+let born = Infinity, t = 0;
+const ready = () => { if (born === Infinity) { born = t; canvas.classList.add('ready'); } };
+const manager = new THREE.LoadingManager(ready, undefined, ready);
+setTimeout(ready, 5000); // slow network: build anyway
+
+// ---- slab: real grass on top, turf + soil layers down the sides
+const GH = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r169/examples/textures/terrain/';
+const tl = new THREE.TextureLoader(manager);
+const grass = tl.load(GH + 'grasslight-big.jpg'), grassN = tl.load(GH + 'grasslight-big-nm.jpg');
+for (const tx of [grass, grassN]) { tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(SL / 12, SW / 12); tx.anisotropy = aniso; }
+grass.colorSpace = THREE.SRGBColorSpace;
+const soil = canvasTex(512, 64, (c, w, h) => {
+  const g = c.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#3f7d2c'); g.addColorStop(.12, '#2e6224'); g.addColorStop(.16, '#5b3f26');
+  g.addColorStop(.55, '#6f5133'); g.addColorStop(.6, '#a8895d'); g.addColorStop(.68, '#5a3e25'); g.addColorStop(1, '#3a2716');
+  c.fillStyle = g; c.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2500; i++) { c.fillStyle = `rgba(${Math.random() < .5 ? '0,0,0' : '255,240,210'},${Math.random() * .18})`; c.fillRect(Math.random() * w, 10 + Math.random() * h, 1.5, 1.5); }
+  c.fillStyle = '#4c8f35';
+  for (let x = 0; x < w; x += 2) c.fillRect(x, 0, 1, 3 + Math.random() * 6); // turf fringe
+});
+soil.wrapS = THREE.RepeatWrapping;
+const side = len => { const tx = soil.clone(); tx.repeat.set(len / 10, 1); return new THREE.MeshStandardMaterial({ map: tx, roughness: 1 }); };
+const top = new THREE.MeshStandardMaterial({ map: grass, normalMap: grassN, color: '#a4cf90', roughness: 1 });
+const sx = side(SW), sz = side(SL);
+const slab = new THREE.Mesh(new THREE.BoxGeometry(SL, SH, SW), [sx, sx, top, new THREE.MeshStandardMaterial({ color: '#2c1d10' }), sz, sz]);
+slab.position.y = -SH / 2; slab.castShadow = slab.receiveShadow = true;
+pitch.add(slab);
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.ShadowMaterial({ opacity: .14 }));
+floor.rotation.x = -Math.PI / 2; floor.position.y = -SH - 7; floor.receiveShadow = true;
+scene.add(floor);
+
+// ---- mowing stripes + markings; they spread out from the centre spot as the pitch builds
+const revealR = { value: reduce ? 1 : 0 };
+const linesMat = new THREE.MeshStandardMaterial({
+  map: canvasTex((PW + 2) * 16, (PL + 2) * 16, c => {
+    c.setTransform(16, 0, 0, 16, 16, 16);
+    const bands = 18, bh = PL / bands;
+    for (let i = 0; i < bands; i++) { c.fillStyle = i % 2 ? 'rgba(255,255,255,.09)' : 'rgba(0,40,0,.12)'; c.fillRect(-1, i * bh, PW + 2, bh); }
+    c.strokeStyle = c.fillStyle = 'rgba(255,255,255,.92)'; c.lineWidth = .16;
+    const arc = (x, y, r, a0 = 0, a1 = Math.PI * 2) => { c.beginPath(); c.arc(x, y, r, a0, a1); c.stroke(); };
+    const spot = (x, y, r = .25) => { c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill(); };
+    c.strokeRect(0, 0, PW, PL);
+    c.beginPath(); c.moveTo(0, PL / 2); c.lineTo(PW, PL / 2); c.stroke();
+    arc(PW / 2, PL / 2, 9.15); spot(PW / 2, PL / 2, .35);
+    const a = Math.acos(5.5 / 9.15);
+    for (const near of [true, false]) {
+      c.strokeRect(PW / 2 - 20.16, near ? 0 : PL - 16.5, 40.32, 16.5);
+      c.strokeRect(PW / 2 - 9.16, near ? 0 : PL - 5.5, 18.32, 5.5);
+      spot(PW / 2, near ? 11 : PL - 11);
+      near ? arc(PW / 2, 11, 9.15, Math.PI / 2 - a, Math.PI / 2 + a) : arc(PW / 2, PL - 11, 9.15, -Math.PI / 2 - a, -Math.PI / 2 + a);
+    }
+    [[0, 0], [PW, 0], [PW, PL], [0, PL]].forEach(([x, y], i) => arc(x, y, 1, i * Math.PI / 2, (i + 1) * Math.PI / 2));
+  }),
+  transparent: true, depthWrite: false, roughness: 1,
+});
+linesMat.onBeforeCompile = sh => {
+  sh.uniforms.uReveal = revealR;
+  sh.fragmentShader = 'uniform float uReveal;\n' + sh.fragmentShader.replace('#include <map_fragment>',
+    '#include <map_fragment>\n  if (distance(vMapUv, vec2(.5)) > uReveal) discard;');
+};
+const lines = new THREE.Mesh(new THREE.PlaneGeometry(PW + 2, PL + 2), linesMat);
+lines.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
+lines.position.y = .03; lines.receiveShadow = true;
+pitch.add(lines);
+
+// ---- soft cloud shadows drifting across the grass
+const clouds = canvasTex(512, 512, (c, w, h) => {
+  for (let i = 0; i < 12; i++) {
+    const x = rand(0, w), y = rand(0, h), r = rand(70, 160);
+    for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) { // draw wrapped so the texture tiles seamlessly
+      const g = c.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+      g.addColorStop(0, 'rgba(0,0,0,.5)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = g; c.fillRect(x + ox - r, y + oy - r, r * 2, r * 2);
+    }
+  }
+});
+clouds.wrapS = clouds.wrapT = THREE.RepeatWrapping;
+const cloudLayer = new THREE.Mesh(new THREE.PlaneGeometry(SL, SW), new THREE.MeshBasicMaterial({ map: clouds, transparent: true, opacity: .28, depthWrite: false }));
+cloudLayer.rotation.x = -Math.PI / 2; cloudLayer.position.y = .05;
+pitch.add(cloudLayer);
+
+// ---- goals with nets
+const white = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .35 });
+const netMat = new THREE.MeshStandardMaterial({
+  map: (() => { const tx = canvasTex(32, 32, c => { c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 3; c.strokeRect(0, 0, 32, 32); }); tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.repeat.set(16, 8); return tx; })(),
+  transparent: true, alphaTest: .3, side: THREE.DoubleSide,
+});
+const hidden = new THREE.MeshBasicMaterial({ visible: false });
+for (const dir of [-1, 1]) {
+  const g = new THREE.Group();
+  const post = new THREE.CylinderGeometry(.14, .14, 2.44, 12);
+  for (const z of [-3.66, 3.66]) { const p = new THREE.Mesh(post, white); p.position.set(0, 1.22, z); g.add(p); }
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, 7.6, 12), white);
+  bar.rotation.x = Math.PI / 2; bar.position.y = 2.44; g.add(bar);
+  const net = new THREE.Mesh(new THREE.BoxGeometry(2, 2.44, 7.32), [dir > 0 ? netMat : hidden, dir > 0 ? hidden : netMat, netMat, hidden, netMat, netMat]);
+  net.position.set(dir, 1.22, 0); g.add(net);
+  g.traverse(o => o.castShadow = true);
+  g.position.x = dir * PL / 2;
+  pitch.add(g);
+}
+
+// ---- ball: classic 32-panel pattern computed per pixel
+const ball = new THREE.Mesh(new THREE.SphereGeometry(.6, 48, 32), new THREE.MeshStandardMaterial({
+  roughness: .35,
+  map: canvasTex(512, 256, (c, W, H) => {
+    const img = c.createImageData(W, H), d = img.data, g = (1 + Math.sqrt(5)) / 2, n = [];
+    const add = (x, y, z, w) => { const l = Math.hypot(x, y, z); n.push([x / l, y / l, z / l, w]); };
+    const P = 1 / 2.32761, Hx = 1 / 2.26728; // 1 / face distance: pentagons sit slightly further out
+    for (const a of [-1, 1]) for (const b of [-g, g]) { add(0, a, b, P); add(a, b, 0, P); add(b, 0, a, P); }
+    for (const a of [-1, 1]) for (const b of [-1, 1]) { for (const e of [-1, 1]) add(a, b, e, Hx); add(0, a / g, b * g, Hx); add(a / g, b * g, 0, Hx); add(b * g, 0, a / g, Hx); }
+    for (let y = 0; y < H; y++) {
+      const th = (y + .5) / H * Math.PI, st = Math.sin(th), py = Math.cos(th);
+      for (let x = 0; x < W; x++) {
+        const ph = (x + .5) / W * Math.PI * 2, px = -Math.cos(ph) * st, pz = Math.sin(ph) * st;
+        let b1 = -9, b2 = -9, bi = 0;
+        for (let i = 0; i < 32; i++) { const v = (n[i][0] * px + n[i][1] * py + n[i][2] * pz) * n[i][3]; if (v > b1) { b2 = b1; b1 = v; bi = i; } else if (v > b2) b2 = v; }
+        const k = (y * W + x) * 4, col = (b1 - b2) / b1 < .012 ? [130, 135, 130] : bi < 12 ? [14, 30, 22] : [248, 248, 244];
+        d[k] = col[0]; d[k + 1] = col[1]; d[k + 2] = col[2]; d[k + 3] = 255;
+      }
+    }
+    c.putImageData(img, 0, 0);
+  }),
+}));
+ball.castShadow = true; ball.visible = false;
+scene.add(ball);
+// soft contact shadow that spreads and fades as the ball rises
+const contact = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.MeshBasicMaterial({
+  map: canvasTex(64, 64, (c, w, h) => { const g = c.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, 'rgba(0,0,0,.6)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.fillRect(0, 0, w, h); }),
+  transparent: true, depthWrite: false,
+}));
+contact.rotation.x = -Math.PI / 2; contact.visible = false;
+scene.add(contact);
+
+// ---- section markers: ring + pulse + light beam in the grass, HTML label with a data preview above
+const ICONS = {
+  clubs: '<path d="M12 3 5 6v5c0 4.5 3 8.3 7 10 4-1.7 7-5.5 7-10V6z"/>',
+  players: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
+  fixtures: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  table: '<path d="M5 20V10M12 20V4M19 20v-7"/>',
+  stats: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+  manage: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+};
+const pts = r => r[8], gd = r => r[4] - r[5], signed = n => (n > 0 ? '+' : '') + n;
+const lum = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16, n >> 8 & 255, n & 255].map(v => (v /= 255) <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((a, v, i) => a + v * [.2126, .7152, .0722][i], 0); };
+const crest = code => { const c = club(code)[4]; return `<i class="crest" style="background:${c};color:${lum(c) > .3 ? '#0c2416' : '#fff'}">${code}</i>`; };
+const go = '<span class="go">Click to open →</span>';
+const perMatch = () => (matches ? totalGoals / matches : 0).toFixed(2);
+const PEEK = { // functions so they repaint after an edit on the Manage page
+  clubs: () => `<small>${SEASON} season</small><b>${CLUBS.length} clubs</b><span class="dots">${CLUBS.map(c => `<i style="background:${c[4]}"></i>`).join('')}</span>${go}`,
+  players: () => SCORERS[0] ? `<small>Top scorer</small><b>${SCORERS[0][0]}</b>${club(SCORERS[0][1])[0]} · ${SCORERS[0][2]} goals${go}` : `<small>Top scorer</small><b>No goals yet</b>${go}`,
+  fixtures: () => { const f = FIXTURES[0]; return f ? `<small>Next match</small><b>${club(f[0])[0]} v ${club(f[1])[0]}</b>${f[2]} · ${club(f[0])[2]}${go}` : `<small>Fixtures</small><b>Nothing scheduled</b>${go}`; },
+  table: () => `<small>Top of the table</small><ol>${TABLE.slice(0, 3).map(r => `<li><span>${r[7]}. ${club(r[0])[0]}</span><span>${pts(r)}</span></li>`).join('')}</ol>${go}`,
+  stats: () => `<small>Season so far</small><b>${totalGoals} goals</b>${perMatch()} per match · ${matches} played${go}`,
+  manage: () => `<small>PostgreSQL</small><b>Manage data</b>Create, read, update and delete every table${go}`,
+};
+const SPOTS = [
+  { id: 'clubs', label: 'Clubs', x: 0, z: 0 },
+  { id: 'players', label: 'Players', x: -30, z: -17 },
+  { id: 'fixtures', label: 'Fixtures', x: 30, z: -17 },
+  { id: 'table', label: 'Table', x: -30, z: 17 },
+  { id: 'stats', label: 'Stats', x: 30, z: 17 },
+  { id: 'manage', label: 'Manage', x: 0, z: 25 },
+];
+const ringGeo = new THREE.RingGeometry(1.5, 2, 48), haloGeo = new THREE.RingGeometry(2, 2.3, 48);
+const beamGeo = new THREE.CylinderGeometry(1.6, 1.6, 7, 32, 1, true).translate(0, 3.5, 0);
+const beamTex = canvasTex(4, 128, (c, w, h) => { const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(255,255,255,1)'); c.fillStyle = g; c.fillRect(0, 0, w, h); });
+for (const s of SPOTS) {
+  s.pos = new THREE.Vector3(s.x, 0, s.z); s.heat = 0;
+  const flat = (geo, opacity) => {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.set(s.x, .07, s.z); pitch.add(m); return m;
+  };
+  s.ring = flat(ringGeo, .95); s.halo = flat(haloGeo, .6);
+  s.beam = new THREE.Mesh(beamGeo, new THREE.MeshBasicMaterial({ map: beamTex, transparent: true, opacity: .18, depthWrite: false, side: THREE.DoubleSide }));
+  s.beam.position.set(s.x, 0, s.z); pitch.add(s.beam);
+  s.btn = Object.assign(document.createElement('button'), { className: 'spot', type: 'button' });
+  s.btn.setAttribute('aria-label', `${s.label} — open section`);
+  s.btn.innerHTML = `<span class="ic"><svg viewBox="0 0 24 24">${ICONS[s.id]}</svg></span>${s.label}<span class="peek-card" aria-hidden="true">${PEEK[s.id]()}</span>`;
+  s.btn.style.visibility = 'hidden';
+  s.btn.onclick = () => openSpot(s);
+  spotsEl.append(s.btn);
+}
+
+// ---- pass replay: the ball tours the markers (each landing pops that marker's preview), with the odd loose pass
+const arcs = Array.from({ length: 4 }, () => {
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(Array(48).fill(new THREE.Vector3())),
+    new THREE.LineDashedMaterial({ color: '#ffffff', dashSize: 1.2, gapSize: .8, transparent: true, opacity: 0 }));
+  scene.add(l); return l;
+});
+const ripples = Array.from({ length: 3 }, () => {
+  const m = new THREE.Mesh(new THREE.RingGeometry(1.6, 1.9, 48), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = .06; m.userData.age = 9;
+  scene.add(m); return m;
+});
+const BR = .6; // ball radius
+const pass = { curve: null, line: null, t: 0, dur: 1, hold: .6, n: 0, bounce: 9, locked: false, target: null, last: null };
+ball.position.set(0, BR, 0);
+let peeked = null;
+const peek = s => { peeked?.btn.classList.remove('peek'); peeked = s; s?.btn.classList.add('peek'); };
+function launch(b, lofted, dur) { // ball from wherever it is now to b, drawing its dashed path as it goes
+  const a = ball.position.clone(), d = a.distanceTo(b), mid = a.clone().lerp(b, .5);
+  mid.y += lofted ? Math.max(d * .25, 6) : d * .04;
+  pass.curve = new THREE.QuadraticBezierCurve3(a, mid, b);
+  pass.line = arcs[pass.n++ % arcs.length];
+  pass.line.geometry.setFromPoints(pass.curve.getPoints(47));
+  pass.line.computeLineDistances();
+  pass.line.geometry.setDrawRange(0, 0);
+  pass.line.material.opacity = .95;
+  pass.t = 0; pass.hold = 0; pass.dur = dur ?? M.clamp(d / 26, .8, 1.6);
+}
+function nextPass() {
+  peek(null);
+  if (Math.random() < .3) { // loose pass to open grass
+    const a = ball.position, b = new THREE.Vector3();
+    do b.set(M.clamp(a.x + rand(-34, 34), -PL / 2 + 4, PL / 2 - 4), BR, M.clamp(a.z + rand(-26, 26), -PW / 2 + 4, PW / 2 - 4));
+    while (a.distanceTo(b) < 14);
+    pass.target = null;
+    return launch(b, Math.random() < .4);
+  }
+  const options = SPOTS.filter(s => s !== pass.last);
+  pass.target = options[Math.random() * options.length | 0];
+  launch(pass.target.pos.clone().setY(BR), ball.position.distanceTo(pass.target.pos) > 25);
+}
+const prev = new THREE.Vector3(), axis = new THREE.Vector3();
+function step(dt) {
+  prev.copy(ball.position);
+  if (pass.hold > 0) {
+    pass.bounce += dt; // two shrinking hops after each landing
+    ball.position.y = BR + Math.abs(Math.sin(pass.bounce * 10)) * 1.4 * Math.exp(-pass.bounce * 6);
+    if (!pass.locked) { pass.hold -= dt; if (pass.hold <= 0) nextPass(); }
+  } else {
+    pass.t = Math.min(pass.t + dt / pass.dur, 1);
+    const k = M.smoothstep(pass.t, 0, 1);
+    pass.curve.getPoint(k, ball.position);
+    pass.line.geometry.setDrawRange(0, Math.ceil(k * 48));
+    if (pass.t >= 1) {
+      pass.bounce = 0;
+      pass.hold = pass.target ? 2.6 : .4 + Math.random() * .5;
+      const r = ripples[pass.n % ripples.length];
+      r.position.x = ball.position.x; r.position.z = ball.position.z; r.userData.age = 0;
+      if (pass.target && !pass.locked) { peek(pass.target); pass.last = pass.target; }
+    }
+  }
+  // roll the ball the way it's travelling
+  const dx = ball.position.x - prev.x, dz = ball.position.z - prev.z, dist = Math.hypot(dx, dz);
+  if (dist > 1e-5) ball.rotateOnWorldAxis(axis.set(dz / dist, 0, -dx / dist), dist / BR);
+  for (const l of arcs) if (l !== pass.line || pass.hold > 0) l.material.opacity = Math.max(0, l.material.opacity - dt * .35);
+  for (const r of ripples) { r.userData.age += dt; r.scale.setScalar(1 + r.userData.age * 2.2); r.material.opacity = Math.max(0, .9 - r.userData.age * .9); }
+  clouds.offset.x += dt * .006; clouds.offset.y += dt * .002;
+  const lift = ball.position.y - BR;
+  contact.position.set(ball.position.x, .06, ball.position.z);
+  contact.scale.setScalar(1 + lift * .12); contact.material.opacity = 1 / (1 + lift * .4);
+}
+
+// ---- click a marker: the ball flies to it, the camera dives into the grass, the section page opens out of that spot
+const sample = '<p class="note">Live from the PostgreSQL database · change anything on the Manage page.</p>';
+const bars = rows => { // single-series leader bars, value at the tip
+  if (!rows.length) return '<p class="note">Nothing recorded yet. Add numbers on the Manage page (Player stats).</p>';
+  const max = Math.max(...rows.map(r => r[2]));
+  return `<ol class="bars">${rows.map((r, i) => `<li style="--i:${i}"><button class="who" type="button" data-club="${r[1]}" title="${club(r[1])[0]}">${crest(r[1])}${r[0]}</button><span class="bar-track"><i style="width:${r[2] / max * 100}%"></i></span><b class="val">${r[2]}</b></li>`).join('')}</ol>`;
+};
+let mwShown = null; // matchweek picked on the Fixtures page
+const mwNow = () => mwShown ?? NEXT_MW ?? LAST_MW;
+const pages = () => ({ // [kicker, intro line, body]
+  clubs: [`${SEASON} season`, `All ${CLUBS.length} clubs in the division — their grounds and home cities.`, () =>
+    `<input class="search" type="search" placeholder="Search clubs, grounds or cities" aria-label="Search clubs">
+     <div class="club-grid">${CLUBS.map((c, i) => `<button class="club" type="button" style="--i:${i}" data-club="${c[1]}" data-q="${`${c[0]} ${c[2]} ${c[3]}`.toLowerCase()}">${crest(c[1])}<span><b>${c[0]}</b><small>${c[2]} · ${c[3]}</small></span></button>`).join('')}</div>
+     <p class="note empty" hidden>No clubs match that search.</p>`],
+  players: [`Leaders after matchweek ${LAST_MW}`, 'Goals and clean sheets across the league — every squad, every appearance.', () =>
+    `<div class="two"><section class="panel"><h3>Goals</h3>${bars(SCORERS)}</section><section class="panel"><h3>Clean sheets</h3>${bars(CLEAN)}</section></div>${sample}`],
+  fixtures: [`Matchweek ${mwNow()}`, 'Kick-off times, grounds and results. Pick any matchweek.', () => {
+    const mws = [...new Set(MATCHES.map(m => m.matchweek).filter(Boolean))].sort((a, b) => a - b);
+    const ms = MATCHES.filter(m => m.matchweek === mwNow()), days = [...new Set(ms.map(m => dayName(m.kickoff_at)))];
+    const score = m => m.status === 'finished' ? `<span class="ko ft">${m.home_goals}–${m.away_goals}</span>`
+      : `<span class="ko">${m.status === 'scheduled' ? timeOf(m.kickoff_at) : esc(m.status)}</span>`;
+    return `<label class="mw-pick">Matchweek <select class="mw">${mws.map(n => `<option${n === mwNow() ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`
+      + (days.map(day => `<h3 class="day">${day}</h3><div class="panel">${ms.filter(m => dayName(m.kickoff_at) === day).map((m, i) =>
+        `<div class="match" style="--i:${i}"><button class="team home" type="button" data-club="${m.home}">${club(m.home)[0]}${crest(m.home)}</button>${score(m)}<button class="team" type="button" data-club="${m.away}">${crest(m.away)}${club(m.away)[0]}</button><small>${club(m.home)[2]}${m.referee ? ` · Referee ${esc(m.referee)}` : ''}</small></div>`).join('')}</div>`).join('')
+        || '<p class="note">No matches in this matchweek yet.</p>') + sample;
+  }],
+  table: [`After matchweek ${LAST_MW}`, `Points, goal difference and form for all ${TABLE.length} clubs.`, () =>
+    `<div class="panel"><div class="table-wrap"><table class="full league">
+      <thead><tr><th>#</th><th>Club</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th><th>Form</th></tr></thead>
+      <tbody>${TABLE.map((r, i) => `<tr data-row="${r[0]}" class="${i < 4 ? 'ucl' : i === 4 ? 'uel' : i > TABLE.length - 4 ? 'rel' : ''}"><td>${r[7]}</td><td><button class="club-cell" type="button" data-club="${r[0]}">${crest(r[0])}${club(r[0])[0]}</button></td><td>${r[1] + r[2] + r[3]}</td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${signed(gd(r))}</td><td>${pts(r)}</td><td><span class="form">${[...r[6]].map(x => `<i class="${x}">${x}</i>`).join('')}</span></td></tr>`).join('')}</tbody>
+    </table></div>
+    <div class="legend"><span class="ucl">Champions League</span><span class="uel">Europa League</span><span class="rel">Relegation</span></div></div>${sample}`],
+  stats: [`Season so far · after matchweek ${LAST_MW}`, 'League-wide numbers — the starting point for the analytics layer.', () => {
+    const top = Math.max(1, ...MW_GOALS.map(r => r[1])), n = MW_GOALS.length, label = mw => n <= 12 || mw % 5 === 0 || mw === 1;
+    return `<div class="stat-grid">
+      <div class="panel"><h3>Goals scored</h3><b class="hero-num">${totalGoals}</b><p class="note">${perMatch()} per match · ${matches} matches played</p></div>
+      <div class="panel"><h3>Goals per matchweek</h3>
+        <div class="cols" style="grid-template-columns:repeat(${Math.max(n, 1)},1fr)" role="img" aria-label="Goals per matchweek: ${MW_GOALS.map(([mw, g]) => `MW${mw} ${g}`).join(', ')}">${MW_GOALS.map(([mw, g], i) =>
+          `<div class="col${g === top ? ' top' : ''}" style="--h:${g / top};--i:${i}" data-v="${g}"><i></i><span>${label(mw) ? `MW${mw}` : ''}</span></div>`).join('')}</div></div>
+      <div class="panel"><h3>How matches ended</h3>${RESULTS.map(([label, n]) =>
+        `<div class="meter"><div class="meter-top"><span>${label}</span><b>${n} <small>· ${Math.round(n / (matches || 1) * 100)}%</small></b></div><div class="meter-track"><i style="width:${n / (matches || 1) * 100}%"></i></div></div>`).join('')}</div>
+      <div class="kpis">${DISCIPLINE.map(([label, n]) => `<div><b>${n}</b><span>${label}</span></div>`).join('')}</div>
+    </div>${sample}`;
+  }],
+  manage: ['PostgreSQL · schema pl', 'Create, read, update and delete rows in every table. Changes show up across the site straight away.', () =>
+    `<div class="m-tables" role="group" aria-label="Tables"></div>
+     <div class="m-bar"><input class="search m-search" type="search" placeholder="Filter these rows" aria-label="Filter rows"><button class="btn btn-green m-add" type="button">+ Add row</button></div>
+     <p class="m-status" role="status">Loading tables…</p>
+     <div class="panel"><div class="table-wrap"><table class="full m-grid"></table></div></div>`],
+});
+
+// ---- Manage page: a generic editor driven by /api/meta (column types, enums, foreign keys)
+const TABLE_NAMES = { matches: 'Matches', clubs: 'Clubs', players: 'Players', stadiums: 'Stadiums', seasons: 'Seasons', season_clubs: 'Season clubs',
+  squad_registrations: 'Squads', staff: 'Staff', club_staff: 'Managers & staff', referees: 'Referees', match_team_stats: 'Match stats',
+  match_events: 'Match events', player_season_stats: 'Player stats', transfers: 'Transfers' };
+const nice = s => s.replace(/_id$/, '').replace(/_/g, ' ');
+const SKIP = new Set(['created_at', 'updated_at']);
+let META = null, mTable = 'matches', mRows = [], OPTS = {};
+const mEl = s => page.querySelector(s);
+function mStatus(text, err = false) { const el = mEl('.m-status'); if (el) { el.textContent = text; el.classList.toggle('err', err); } }
+const cell = (c, v) => {
+  if (v === null || v === undefined || v === '') return '<span style="color:var(--muted)">—</span>';
+  if (c.ref) return esc(OPTS[c.ref]?.get(v) ?? `#${v}`);
+  if (c.type === 'boolean') return v ? '✓' : '✗';
+  if (c.type.startsWith('timestamp')) return esc(new Date(v).toLocaleString('en-GB', { ...LON, dateStyle: 'medium', timeStyle: 'short' }));
+  return esc(v);
+};
+async function loadOptions(cols) {
+  await Promise.all([...new Set(cols.filter(c => c.ref).map(c => c.ref))].filter(r => !OPTS[r])
+    .map(async r => OPTS[r] = new Map((await api(`options/${r}`)).map(o => [o.id, o.label]))));
+}
+async function initManage() {
+  try {
+    META ??= await api('meta');
+    const names = Object.keys(TABLE_NAMES).filter(t => META[t]).concat(Object.keys(META).filter(t => !TABLE_NAMES[t]));
+    mEl('.m-tables').innerHTML = names.map(t => `<button class="tab" type="button" data-t="${t}"${t === mTable ? ' aria-current="page"' : ''}>${TABLE_NAMES[t] ?? nice(t)}</button>`).join('');
+    mEl('.m-tables').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { mTable = b.dataset.t; mEl('.m-search').value = ''; initManage(); } };
+    mEl('.m-add').onclick = () => openForm(null);
+    mEl('.m-search').oninput = filterRows;
+    await loadTable();
+  } catch (e) { mStatus(e.message, true); }
+}
+async function loadTable() {
+  const cols = META[mTable].columns.filter(c => !SKIP.has(c.name));
+  mStatus('Loading…');
+  [mRows] = await Promise.all([api(`t/${mTable}`), loadOptions(cols)]);
+  mEl('.m-grid').innerHTML = `<thead><tr><th>Actions</th>${cols.map(c => `<th>${esc(nice(c.name))}</th>`).join('')}</tr></thead>
+    <tbody>${mRows.map(r => `<tr data-id="${r.id}"><td class="act"><button class="mini" type="button" data-edit="${r.id}">Edit</button><button class="mini del" type="button" data-del="${r.id}">Delete</button></td>${cols.map(c => `<td>${cell(c, r[c.name])}</td>`).join('')}</tr>`).join('')}</tbody>`;
+  mEl('.m-grid').onclick = e => {
+    const ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
+    if (ed) openForm(mRows.find(r => r.id === +ed.dataset.edit), ed);
+    if (del) removeRow(+del.dataset.del);
+  };
+  mStatus(`${mRows.length} row${mRows.length === 1 ? '' : 's'} in ${TABLE_NAMES[mTable] ?? nice(mTable)}${mRows.length === 1000 ? ' (showing the newest 1000)' : ''}.`);
+  filterRows();
+}
+function filterRows() {
+  const q = mEl('.m-search')?.value.trim().toLowerCase() ?? '';
+  page.querySelectorAll('.m-grid tbody tr').forEach(tr => tr.hidden = !!q && !tr.textContent.toLowerCase().includes(q));
+}
+const localInput = v => { // timestamptz → value for <input type=datetime-local> in the browser's time zone
+  if (!v) return ''; const d = new Date(v); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16);
+};
+function field(c, v) {
+  const required = !c.nullable && !c.hasDefault, name = `name="${c.name}"`, req = required ? ' required' : '';
+  const label = `<span>${esc(nice(c.name))}${required ? ' *' : ''}</span>`;
+  if (c.type === 'boolean') return `<label class="check"><input type="checkbox" ${name}${v ? ' checked' : ''}>${label}</label>`;
+  let input;
+  if (c.ref || c.enum) {
+    const opts = c.ref ? [...(OPTS[c.ref] ?? [])] : c.enum.map(e => [e, e]);
+    input = `<select ${name}${req}><option value="">${required ? 'Choose…' : '— none —'}</option>${opts.map(([id, label]) => `<option value="${esc(id)}"${String(id) === String(v ?? '') ? ' selected' : ''}>${esc(label)}</option>`).join('')}</select>`;
+  } else if (c.type === 'date') input = `<input type="date" ${name} value="${esc(v ?? '')}"${req}>`;
+  else if (c.type.startsWith('timestamp')) input = `<input type="datetime-local" ${name} value="${localInput(v)}"${req}>`;
+  else if (/int|numeric|real|double/.test(c.type)) input = `<input type="number" step="${c.type === 'numeric' ? 'any' : 1}" ${name} value="${esc(v ?? '')}"${req}>`;
+  else if (c.name === 'notes') input = `<textarea ${name} rows="3"${req}>${esc(v ?? '')}</textarea>`;
+  else input = `<input type="text" ${name} value="${esc(v ?? '')}"${c.type === 'character' ? ` maxlength="${c.name.endsWith('colour') ? 7 : 3}"` : ''}${req}>`;
+  return `<label>${label}${input}</label>`;
+}
+function openForm(row, from = document.activeElement) {
+  const cols = META[mTable].columns.filter(c => c.name !== 'id' && !SKIP.has(c.name)), title = TABLE_NAMES[mTable] ?? nice(mTable);
+  drawer.querySelector('.drawer-body').innerHTML = `<h3 id="drawer-title" class="small">${row ? 'Edit row' : 'Add row'}</h3><p class="where">${esc(title)}${row ? ` · id ${row.id}` : ''}</p>
+    <form class="m-form" novalidate>${cols.map(c => field(c, row?.[c.name] ?? (row ? null : undefined))).join('')}<p class="m-err" role="alert"></p>
+    <button class="btn btn-green" type="submit">${row ? 'Save changes' : 'Create row'}</button></form>`;
+  const form = drawer.querySelector('.m-form');
+  form.onsubmit = async e => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    const body = {};
+    for (const c of cols) {
+      const el = form.elements[c.name];
+      body[c.name] = el.type === 'checkbox' ? el.checked
+        : el.type === 'datetime-local' ? (el.value ? new Date(el.value).toISOString() : '')
+        : el.type === 'number' || c.ref ? (el.value === '' ? '' : Number(el.value)) : el.value;
+    }
+    const btn = form.querySelector('[type=submit]'); btn.disabled = true;
+    try {
+      await api(row ? `t/${mTable}/${row.id}` : `t/${mTable}`, { method: row ? 'PATCH' : 'POST', body });
+      closeClub(); await afterWrite(row ? 'Saved.' : 'Row created.');
+    } catch (err) { form.querySelector('.m-err').textContent = err.message; btn.disabled = false; }
+  };
+  drawer.hidden = scrim.hidden = false; drawerFrom = from;
+  form.elements[0]?.focus();
+}
+async function removeRow(id) {
+  if (!confirm(`Delete row ${id} from ${TABLE_NAMES[mTable] ?? nice(mTable)}? This can't be undone.`)) return;
+  try { await api(`t/${mTable}/${id}`, { method: 'DELETE' }); await afterWrite('Row deleted.'); }
+  catch (e) { mStatus(`Couldn't delete: ${e.message}`, true); }
+}
+async function afterWrite(msg) { // every write: reload this table and the public pages' data
+  OPTS = {};
+  await Promise.all([loadTable(), refreshSite()]);
+  mStatus(`${msg} ${mEl('.m-status').textContent}`);
+}
+async function refreshSite() {
+  applySite(await api('site'));
+  paintChrome(); tick(); buildItems();
+  for (const s of SPOTS) s.btn.querySelector('.peek-card').innerHTML = PEEK[s.id]();
+}
+let active = null, zoom = 0, zoomGoal = 0, pageOpen = false;
+const focusPt = new THREE.Vector3();
+const spotOnScreen = s => { // viewport position of a marker: the page grows from / shrinks back into it
+  const p = s.pos.clone().project(camera), r = canvas.getBoundingClientRect();
+  return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height];
+};
+const reveal = (s, open) => {
+  if (reduce) return Promise.resolve();
+  const [x, y] = spotOnScreen(s), R = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+  const frames = [{ clipPath: `circle(0px at ${x}px ${y}px)` }, { clipPath: `circle(${R}px at ${x}px ${y}px)` }];
+  return page.animate(open ? frames : frames.reverse(), { duration: open ? 750 : 550, easing: 'cubic-bezier(.7,0,.2,1)' }).finished;
+};
+const baseTitle = document.title, topbar = $('.topbar');
+const tabs = page.querySelector('.tabs');
+for (const s of SPOTS) { // section tabs inside the page: hop between sections without going back to the pitch
+  s.tab = Object.assign(document.createElement('button'), { className: 'tab', type: 'button' });
+  s.tab.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[s.id]}</svg>${s.label}`;
+  s.tab.onclick = () => switchPage(s);
+  tabs.append(s.tab);
+}
+// club drawer: everything the database knows about one club
+const drawer = page.querySelector('.drawer'), scrim = page.querySelector('.drawer-scrim');
+const ord = n => n + (n > 3 && n < 21 ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th');
+let drawerFrom = null;
+function openClub(code, from = document.activeElement) {
+  const c = club(code), info = INFO[code] ?? {}, r = TABLE.find(x => x[0] === code) ?? [code, 0, 0, 0, 0, 0, '', null, 0];
+  const mine = m => m.home === code || m.away === code, vs = m => m.home === code ? [m.away, 'home'] : [m.home, 'away'];
+  const fx = MATCHES.find(m => mine(m) && m.status === 'scheduled'), last = MATCHES.filter(m => mine(m) && m.status === 'finished').at(-1);
+  const top = LEADERS.filter(l => l.code === code && l.goals > 0).sort((a, b) => b.goals - a.goals)[0];
+  const line = (k, v) => v ? `<div class="line"><span>${k}</span><small>${esc(v)}</small></div>` : '';
+  drawer.querySelector('.drawer-body').innerHTML = `${crest(code)}<h3 id="drawer-title">${c[0]}</h3><p class="where">${c[2]} · ${c[3]}</p>
+    <div class="drawer-stats"><div><b>${r[7] ? ord(r[7]) : '–'}</b><span>Position</span></div><div><b>${pts(r)}</b><span>Points</span></div><div><b>${signed(gd(r))}</b><span>Goal difference</span></div></div>
+    <h4>Last five</h4><span class="form">${[...r[6]].map(x => `<i class="${x}">${x}</i>`).join('') || 'No matches yet'}</span>
+    ${last ? `<h4>Last result</h4><div class="line"><span>${last.home_goals}–${last.away_goals} v ${club(vs(last)[0])[0]} · ${vs(last)[1]}</span><small>MW${last.matchweek ?? '–'}</small></div>` : ''}
+    ${fx ? `<h4>Next match</h4><div class="line"><span>v ${club(vs(fx)[0])[0]} · ${vs(fx)[1]}</span><small>${when(fx.kickoff_at)}</small></div>` : ''}
+    <h4>Top scorer</h4><div class="line"><span>${top ? esc(top.player) : 'No goals recorded yet'}</span><small>${top ? `${top.goals} goals` : ''}</small></div>
+    <h4>Club</h4>${line('Manager', info.manager)}${line('Ground capacity', info.capacity?.toLocaleString('en-GB'))}${line('Founded', info.founded_year)}${line('Nickname', info.nickname)}${line('Kit', info.kit_manufacturer)}${line('Shirt sponsor', info.shirt_sponsor)}
+    <button class="btn btn-line drawer-go" type="button">See ${c[0]} in the table →</button>
+    ${sample}`;
+  drawer.querySelector('.drawer-go').onclick = () => { closeClub(); goTo('table', () => flashRow(code)); };
+  drawer.hidden = scrim.hidden = false; drawerFrom = from;
+  drawer.querySelector('.drawer-close').focus();
+}
+function flashRow(code) { // scroll a club's table row into view and pulse it
+  const row = page.querySelector(`tr[data-row="${code}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  row.animate([{ background: '#d5efdd' }, { background: '#d5efdd', offset: .6 }, { background: 'transparent' }], { duration: 2000 });
+}
+function closeClub() {
+  if (drawer.hidden) return false;
+  drawer.hidden = scrim.hidden = true; drawerFrom?.focus({ preventScroll: true });
+  return true;
+}
+drawer.querySelector('.drawer-close').onclick = closeClub;
+page.querySelector('.page-body').addEventListener('click', e => { const b = e.target.closest('[data-club]'); if (b) openClub(b.dataset.club, b); });
+scrim.onclick = closeClub;
+function fillPage(s) {
+  closeClub();
+  const [kicker, intro, body] = pages()[s.id];
+  page.querySelector('.kicker').textContent = kicker;
+  page.querySelector('h2').textContent = s.label;
+  const ic = page.querySelector('.hero-ic'), fresh = ic.cloneNode(); // a fresh node replays the icon's entrance
+  fresh.innerHTML = ICONS[s.id]; ic.replaceWith(fresh);
+  page.querySelector('.page-hero p').textContent = intro;
+  page.querySelector('.page-body').innerHTML = body();
+  for (const x of SPOTS) x === s ? x.tab.setAttribute('aria-current', 'page') : x.tab.removeAttribute('aria-current');
+  s.tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  document.title = `${s.label} · Touchline`;
+  const search = page.querySelector('.search');
+  if (search && s.id === 'clubs') search.oninput = () => {
+    const q = search.value.trim().toLowerCase();
+    let shown = 0;
+    page.querySelectorAll('.club').forEach(c => { c.hidden = !c.dataset.q.includes(q); shown += !c.hidden; });
+    page.querySelector('.empty').hidden = shown > 0;
+  };
+  const mw = page.querySelector('.mw');
+  if (mw) mw.onchange = () => { mwShown = +mw.value; fillPage(s); };
+  if (s.id === 'manage') initManage();
+}
+function openSpot(s, push = true) {
+  if (active || !s) return;
+  active = s; pass.locked = true; pass.target = null; peek(null);
+  if (push) history.pushState({ spot: s.id }, '', '#' + s.id);
+  const target = s.pos.clone().setY(BR);
+  reduce ? ball.position.copy(target) : launch(target, true, .9);
+  focusPt.copy(s.pos); zoomGoal = 1;
+  hero.classList.add('zoomed');
+  setTimeout(async () => {
+    if (active !== s) return;
+    fillPage(s);
+    page.hidden = false; page.scrollTop = 0;
+    document.body.style.overflow = 'hidden';
+    hero.inert = topbar.inert = true; // keyboard focus stays inside the open page
+    page.querySelector('.back').focus({ preventScroll: true });
+    await reveal(s, true);
+    if (active === s) pageOpen = true; // stop rendering the hidden pitch
+  }, reduce ? 0 : 950);
+}
+async function switchPage(s) {
+  if (!active || s === active) return;
+  active = s;
+  focusPt.copy(s.pos); ball.position.copy(s.pos).setY(BR); // the pitch behind follows, so "Back" lands on this marker
+  history.replaceState(history.state && { spot: s.id }, '', '#' + s.id);
+  const parts = [page.querySelector('.page-hero .wrap'), page.querySelector('.page-body')];
+  if (!reduce) await Promise.race([ // never wait on a paused animation (hidden tab): fall back to a timer
+    Promise.all(parts.map(el => el.animate([{ opacity: 1 }, { opacity: 0, translate: '0 8px' }], { duration: 150, easing: 'ease-in', fill: 'forwards' }).finished)),
+    new Promise(r => setTimeout(r, 200)),
+  ]);
+  if (active !== s) return;
+  fillPage(s); page.scrollTop = 0;
+  for (const el of parts) {
+    el.getAnimations().forEach(a => a.cancel());
+    if (!reduce) el.animate([{ opacity: 0, translate: '0 12px' }, { opacity: 1, translate: '0 0' }], { duration: 400, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+}
+async function closeSpot() {
+  if (!active) return;
+  const s = active; active = null; pageOpen = false;
+  closeClub();
+  if (!page.hidden) {
+    aimCamera(0); renderer.render(scene, camera); // repaint the pitch at this spot before the page shrinks into it
+    await reveal(s, false); page.hidden = true;
+  }
+  document.body.style.overflow = '';
+  hero.inert = topbar.inert = false;
+  document.title = baseTitle;
+  zoomGoal = 0;
+  hero.classList.remove('zoomed');
+  pass.locked = false; pass.hold = .8;
+  s.btn.focus({ preventScroll: true });
+}
+// each page gets its own URL (#clubs …) so the browser's back button works too
+const leave = () => history.state?.spot ? history.back() : (closeSpot(), history.replaceState(null, '', location.pathname));
+page.querySelector('.back').onclick = leave;
+addEventListener('keydown', e => { if (e.key === 'Escape' && !closePal() && active) closeClub() || leave(); }); // Esc: palette, then drawer, then page
+addEventListener('popstate', () => { const s = SPOTS.find(x => '#' + x.id === location.hash); s ? (active ? switchPage(s) : openSpot(s, false)) : closeSpot(); });
+document.querySelectorAll('[data-spot]').forEach(el => el.onclick = () => { // e.g. "View fixtures" dives through the same spot
+  $('.stage').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+  setTimeout(() => openSpot(SPOTS.find(s => s.id === el.dataset.spot)), reduce || innerWidth > 1100 ? 0 : 500);
+});
+
+// ---- search palette (Ctrl/⌘ K): jump straight to any section, club or player
+const pal = $('.palette'), palIn = pal.querySelector('input'), palList = pal.querySelector('ul');
+let ITEMS = [];
+function buildItems() { // rebuilt after every edit on the Manage page
+  const people = [...new Map([...SCORERS, ...CLEAN].map(x => [x[0], x])).values()];
+  ITEMS = [
+    ...SPOTS.map(s => ({ label: s.label, sub: 'Section', icon: ICONS[s.id], run: () => goTo(s.id) })),
+    ...CLUBS.map(c => ({ label: c[0], sub: c[2], crest: c[1], run: () => goTo('clubs', () => openClub(c[1], page.querySelector(`.club[data-club="${c[1]}"]`))) })),
+    ...people.map(x => ({ label: x[0], sub: `Player · ${club(x[1])[0]}`, crest: x[1], run: () => goTo('players') })),
+  ];
+}
+buildItems();
+let palItems = [], palSel = 0, palFrom = null;
+function goTo(id, then) {
+  const s = SPOTS.find(x => x.id === id);
+  if (active) { active === s ? closeClub() : switchPage(s); then && setTimeout(then, reduce ? 0 : 450); return; }
+  $('.stage').scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  openSpot(s);
+  then && setTimeout(then, reduce ? 0 : 1800);
+}
+function renderPal() {
+  const q = palIn.value.trim().toLowerCase();
+  palItems = ITEMS.filter(i => `${i.label} ${i.sub}`.toLowerCase().includes(q)).slice(0, 8);
+  palSel = Math.min(palSel, Math.max(palItems.length - 1, 0));
+  palList.innerHTML = palItems.length
+    ? palItems.map((i, n) => `<li id="pal-${n}" role="option" aria-selected="${n === palSel}">${i.crest ? crest(i.crest) : `<span class="ic-s"><svg viewBox="0 0 24 24">${i.icon}</svg></span>`}<b>${i.label}</b><small>${i.sub}</small></li>`).join('')
+    : '<li class="empty-row" role="presentation">No matches</li>';
+  palItems.length ? palIn.setAttribute('aria-activedescendant', `pal-${palSel}`) : palIn.removeAttribute('aria-activedescendant');
+}
+function openPal() { palFrom = document.activeElement; pal.hidden = false; palIn.value = ''; palSel = 0; renderPal(); palIn.focus(); }
+function closePal() { if (pal.hidden) return false; pal.hidden = true; palFrom?.focus?.({ preventScroll: true }); return true; }
+function runPal(n) { const item = palItems[n]; if (item) { closePal(); item.run(); } }
+palIn.oninput = () => { palSel = 0; renderPal(); };
+palIn.onkeydown = e => {
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && palItems.length) {
+    e.preventDefault();
+    palSel = (palSel + (e.key === 'ArrowDown' ? 1 : -1) + palItems.length) % palItems.length;
+    renderPal(); palList.children[palSel]?.scrollIntoView({ block: 'nearest' });
+  }
+  if (e.key === 'Enter') runPal(palSel);
+};
+palList.onclick = e => { const li = e.target.closest('[role=option]'); if (li) runPal(+li.id.slice(4)); };
+pal.onclick = e => e.target === pal && closePal();
+$('.find').onclick = openPal;
+if (/Mac|iPhone|iPad/.test(navigator.platform)) $('.find kbd').textContent = '⌘K';
+addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); pal.hidden ? openPal() : closePal(); } });
+
+// ---- play with it: click the grass to pass there (or onto a marker), drag sideways to turn the pitch
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
+let spin = 0, spinGoal = 0, drag = null, lastDrag = -9;
+const pitchPoint = e => {
+  const r = canvas.getBoundingClientRect();
+  ray.setFromCamera(ndc.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1), camera);
+  if (!ray.ray.intersectPlane(ground, hit) || Math.abs(hit.x) > SL / 2 || Math.abs(hit.z) > SW / 2) return null; // anywhere on the slab
+  return hit.set(M.clamp(hit.x, -PL / 2 + 1, PL / 2 - 1), 0, M.clamp(hit.z, -PW / 2 + 1, PW / 2 - 1)); // land inside the lines
+};
+canvas.addEventListener('pointerdown', e => {
+  if (active || !ball.visible) return;
+  drag = { x: e.clientX, from: spinGoal, moved: false };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  if (Math.abs(dx) > 6) { drag.moved = true; canvas.classList.add('dragging'); }
+  if (drag.moved) { spinGoal = M.clamp(drag.from + dx * .004, -.9, .9); lastDrag = t; }
+});
+canvas.addEventListener('pointerup', e => {
+  const d = drag; drag = null;
+  canvas.classList.remove('dragging');
+  if (!d || d.moved || active || pass.locked) return;
+  const p = pitchPoint(e);
+  if (!p) return;
+  const s = SPOTS.find(x => x.pos.distanceTo(p) < 4);
+  if (s) return openSpot(s);
+  peek(null); pass.target = null;
+  launch(p.clone().setY(BR), ball.position.distanceTo(p) > 22);
+});
+canvas.addEventListener('pointercancel', () => { drag = null; canvas.classList.remove('dragging'); });
+
+// ---- camera: settles in on load, gentle sway, leans toward a hovered marker, dives to the chosen one
+const mouse = new THREE.Vector2(), smooth = new THREE.Vector2();
+addEventListener('pointermove', e => mouse.set(e.clientX / innerWidth - .5, e.clientY / innerHeight - .5));
+let W = 1, H = 1, wide = false;
+function resize() {
+  W = canvas.clientWidth; H = canvas.clientHeight;
+  if (!W || !H) return;
+  renderer.setSize(W, H, false);
+  camera.aspect = W / H;
+  wide = W > 1100;
+}
+new ResizeObserver(resize).observe(canvas);
+
+let visible = true;
+new IntersectionObserver(([e]) => visible = e.isIntersecting).observe(canvas);
+const clock = new THREE.Clock();
+const ease = k => k < .5 ? 4 * k * k * k : 1 - Math.pow(2 - 2 * k, 3) / 2;
+const over = new THREE.Vector3(), near = new THREE.Vector3(), look = new THREE.Vector3(), lean = new THREE.Vector3(), v = new THREE.Vector3();
+function aimCamera(dt, hovered = null) {
+  zoom = reduce ? zoomGoal : M.clamp(zoom + Math.sign(zoomGoal - zoom) * dt / 1.3, 0, 1);
+  const z = ease(zoom);
+  const settle = reduce ? 1 : cubicOut(M.clamp(t / 2.6, 0, 1));
+  smooth.lerp(mouse, .05);
+  lean.lerp(hovered ? hovered.pos : v.set(0, 0, 0), .04);
+  const portrait = camera.aspect < 1; // phones: look down the pitch's length so it fills the tall frame
+  if (!drag && t - lastDrag > 3) spinGoal *= 1 - Math.min(dt * .8, 1); // let go: drift back to the home angle
+  spin = M.lerp(spin, spinGoal, Math.min(dt * 6, 1));
+  const ang = (portrait ? 1.25 : .62) + Math.sin(t * .07) * .12 + (smooth.x * .18 + spin) * (1 - z);
+  const fit = wide ? 1 : Math.max(1, (portrait ? 1.3 : 1.5) / camera.aspect); // narrow screens: back off so the slab fits
+  const r = M.lerp(250, wide ? 180 : 150 * fit, settle), hgt = M.lerp(165, wide ? 106 : 92 * fit, settle) - smooth.y * 8 * (1 - z);
+  over.set(Math.sin(ang) * r, hgt, Math.cos(ang) * r);
+  near.set(focusPt.x + Math.sin(ang) * 2.5, 7, focusPt.z + Math.cos(ang) * 2.5); // nose-down onto the marker
+  camera.position.lerpVectors(over, near, z);
+  camera.lookAt(look.set(0, -4, 0).addScaledVector(lean, .15).lerp(focusPt, z));
+  camera.fov = M.lerp(32, 26, z);
+  if (wide) camera.setViewOffset(W, H, M.lerp(-.12, 0, z) * W, M.lerp(.03, 0, z) * H, W, H); // overview: slab right of the copy
+  else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
+}
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), .05);
+  if (!visible || pageOpen) return;
+  t += dt;
+
+  // build-up: slab rises and turns in, lines spread from the centre, markers pop one by one
+  const since = reduce ? 99 : t - born;
+  const b = M.clamp(since / 1.3, 0, 1);
+  pitch.position.y = M.lerp(-34, 0, backOut(b));
+  pitch.rotation.y = M.lerp(-.5, 0, cubicOut(b));
+  revealR.value = cubicOut(M.clamp((since - .7) / 1.1, 0, 1)) * .75;
+  const built = since > 2.2;
+  if (built && !ball.visible) ball.visible = contact.visible = true;
+  if (built && !reduce) step(dt);
+
+  const hovered = SPOTS.find(s => s.btn.matches(':hover, :focus-visible'));
+  SPOTS.forEach((s, i) => {
+    const pop = M.clamp((since - 1.2 - i * .12) / .45, 0, 1);
+    s.heat = M.lerp(s.heat, s === hovered || s === peeked ? 1 : 0, Math.min(dt * 8, 1));
+    const ph = (t * (.7 + s.heat * .9) + s.x * .013 + 1) % 1;
+    s.ring.scale.setScalar(Math.max(backOut(pop), .001) * (1 + s.heat * .18));
+    s.halo.scale.setScalar(Math.max(pop, .001) * (1 + ph * 1.4)); s.halo.material.opacity = .7 * (1 - ph);
+    s.beam.scale.set(1, Math.max(cubicOut(pop), .001) * (1 + s.heat * .6), 1);
+    s.beam.material.opacity = .16 + s.heat * .38;
+    s.btn.style.visibility = pop > 0 ? '' : 'hidden';
+    s.btn.style.opacity = zoomGoal ? 0 : pop;
+  });
+
+  aimCamera(dt, hovered);
+  renderer.render(scene, camera);
+
+  for (const s of SPOTS) {
+    v.copy(s.pos).setY(2.4).project(camera);
+    s.btn.style.transform = `translate(${(v.x + 1) / 2 * W}px, ${(1 - v.y) / 2 * H}px) translate(-50%, calc(-100% - 14px))`;
+  }
+});
+
+const deep = SPOTS.find(x => '#' + x.id === location.hash);
+if (deep) setTimeout(() => openSpot(deep, false), reduce ? 0 : 2600);
+</script>
+</body>
+</html>
